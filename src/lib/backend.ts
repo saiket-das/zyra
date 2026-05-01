@@ -1,4 +1,9 @@
 import { supabase } from "./supabase";
+import type {
+  OnboardingProfileInput,
+  OnboardingDietInput,
+  OnboardingMacroPlan,
+} from "./onboarding-state";
 
 export type FoodLog = {
   id: string;
@@ -73,4 +78,41 @@ export async function deleteFoodLog(id: string) {
   }
 
   return data?.success === true;
+}
+
+export async function saveOnboardingData(
+  userId: string,
+  goal: string,
+  profile: OnboardingProfileInput,
+  diet: OnboardingDietInput,
+  macroPlan?: OnboardingMacroPlan,
+) {
+  const { error } = await supabase
+    .from("users")
+    .update({
+      goal,
+      gender: profile.sex,
+      age: profile.age,
+      height_cm: profile.heightCm,
+      weight_kg: profile.currentWeightKg,
+      dietary_preferences: diet.selectedDiets,
+      ...(macroPlan && {
+        protein_target: macroPlan.proteinG,
+        carbs_target: macroPlan.carbsG,
+        fat_target: macroPlan.fatG,
+        water_target_ml: macroPlan.waterL * 1000,
+        macro_strategy: JSON.stringify({
+          daily_calories: macroPlan.dailyCalories,
+          protein_pct: macroPlan.proteinPct,
+          carbs_pct: macroPlan.carbsPct,
+          fat_pct: macroPlan.fatPct,
+          water_l: macroPlan.waterL,
+        }),
+      }),
+    })
+    .eq("id", userId);
+
+  if (error) {
+    throw error;
+  }
 }

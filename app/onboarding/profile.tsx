@@ -11,6 +11,10 @@ import {
 import { Picker } from "@react-native-picker/picker";
 import { COLORS } from "../../src/lib/theme";
 import { ScreenChrome, PrimaryButton } from "../../src/lib/ui";
+import {
+  getPendingProfileInput,
+  setPendingProfileInput,
+} from "../../src/lib/onboarding-state";
 
 type Sex = "Female" | "Male" | "Other";
 type HeightUnit = "cm" | "ftin";
@@ -117,12 +121,17 @@ function FieldRow({
 
 export default function PersonalInfoScreen() {
   const router = useRouter();
+  const pendingProfile = getPendingProfileInput();
 
-  const [sex, setSex] = useState<Sex>("Male");
-  const [age, setAge] = useState(28);
-  const [heightCm, setHeightCm] = useState(174);
-  const [currentWeightKg, setCurrentWeightKg] = useState(78.4);
-  const [targetWeightKg, setTargetWeightKg] = useState(72.0);
+  const [sex, setSex] = useState<Sex>(pendingProfile?.sex ?? "Male");
+  const [age, setAge] = useState(pendingProfile?.age ?? 28);
+  const [heightCm, setHeightCm] = useState(pendingProfile?.heightCm ?? 174);
+  const [currentWeightKg, setCurrentWeightKg] = useState(
+    pendingProfile?.currentWeightKg ?? 78.4,
+  );
+  const [targetWeightKg, setTargetWeightKg] = useState(
+    pendingProfile?.targetWeightKg ?? 72.0,
+  );
 
   const [heightUnit, setHeightUnit] = useState<HeightUnit>("cm");
   const [weightUnit, setWeightUnit] = useState<WeightUnit>("kg");
@@ -137,6 +146,8 @@ export default function PersonalInfoScreen() {
   const [draftHeightInches, setDraftHeightInches] = useState(9);
   const [draftWeightUnit, setDraftWeightUnit] = useState<WeightUnit>("kg");
   const [draftWeightValue, setDraftWeightValue] = useState(78.4);
+  const [draftWeightKg, setDraftWeightKg] = useState(78);
+  const [draftWeightGrams, setDraftWeightGrams] = useState(400);
 
   const ages = useMemo(() => Array.from({ length: 88 }, (_, i) => i + 13), []);
   const cmHeights = useMemo(
@@ -150,7 +161,15 @@ export default function PersonalInfoScreen() {
   const inchValues = useMemo(() => Array.from({ length: 12 }, (_, i) => i), []);
   const kgWeights = useMemo(
     () =>
-      Array.from({ length: 441 }, (_, i) => Number((30 + i * 0.5).toFixed(1))),
+      Array.from({ length: 2201 }, (_, i) => Number((30 + i * 0.1).toFixed(1))),
+    [],
+  );
+  const kgInts = useMemo(
+    () => Array.from({ length: 221 }, (_, i) => 30 + i),
+    [],
+  );
+  const gramValues = useMemo(
+    () => Array.from({ length: 10 }, (_, i) => i * 100),
     [],
   );
   const lbWeights = useMemo(
@@ -177,11 +196,18 @@ export default function PersonalInfoScreen() {
       const sourceKg =
         field === "currentWeight" ? currentWeightKg : targetWeightKg;
       setDraftWeightUnit(weightUnit);
-      setDraftWeightValue(
-        weightUnit === "kg"
-          ? Number(sourceKg.toFixed(1))
-          : Math.round(toLb(sourceKg)),
-      );
+      if (weightUnit === "kg") {
+        let kgInt = Math.floor(sourceKg);
+        let grams = Math.round(((sourceKg - kgInt) * 1000) / 100) * 100;
+        if (grams === 1000) {
+          kgInt += 1;
+          grams = 0;
+        }
+        setDraftWeightKg(kgInt);
+        setDraftWeightGrams(grams);
+      } else {
+        setDraftWeightValue(Math.round(toLb(sourceKg)));
+      }
     }
 
     setDrawerVisible(true);
@@ -212,7 +238,7 @@ export default function PersonalInfoScreen() {
       setWeightUnit(draftWeightUnit);
       const nextKg =
         draftWeightUnit === "kg"
-          ? Number(draftWeightValue)
+          ? draftWeightKg + draftWeightGrams / 1000
           : toKg(Number(draftWeightValue));
       if (activeField === "currentWeight") {
         setCurrentWeightKg(Number(nextKg.toFixed(1)));
@@ -241,6 +267,28 @@ export default function PersonalInfoScreen() {
     weightUnit === "kg"
       ? { value: targetWeightKg.toFixed(1), unit: "kg" }
       : { value: String(Math.round(toLb(targetWeightKg))), unit: "lb" };
+
+  const drawerTitle =
+    activeField === "age"
+      ? "Age"
+      : activeField === "height"
+        ? "Height"
+        : activeField === "currentWeight"
+          ? "Current weight"
+          : activeField === "targetWeight"
+            ? "Target weight"
+            : "Edit";
+
+  function handleContinue() {
+    setPendingProfileInput({
+      sex,
+      age,
+      heightCm,
+      currentWeightKg,
+      targetWeightKg,
+    });
+    router.push("/onboarding/diet");
+  }
 
   return (
     <ScreenChrome step={3} onBack={() => router.back()}>
@@ -283,14 +331,11 @@ export default function PersonalInfoScreen() {
           value={targetWeightDisplay.value}
           unit={targetWeightDisplay.unit}
           onPress={() => openEditor("targetWeight")}
-          accent
         />
       </ScrollView>
 
       <View style={styles.footer}>
-        <PrimaryButton onPress={() => router.push("/onboarding/diet")}>
-          Continue
-        </PrimaryButton>
+        <PrimaryButton onPress={handleContinue}>Continue</PrimaryButton>
       </View>
 
       <Modal
@@ -305,7 +350,7 @@ export default function PersonalInfoScreen() {
             <Pressable onPress={closeDrawer}>
               <Text style={styles.drawerAction}>Cancel</Text>
             </Pressable>
-            <Text style={styles.drawerTitle}>Edit</Text>
+            <Text style={styles.drawerTitle}>{drawerTitle}</Text>
             <Pressable onPress={applySelection}>
               <Text style={[styles.drawerAction, styles.drawerActionDone]}>
                 Done
@@ -315,6 +360,7 @@ export default function PersonalInfoScreen() {
 
           {activeField === "age" ? (
             <Picker
+              key={`age-${draftAge}`}
               selectedValue={draftAge}
               onValueChange={(v: string | number) => setDraftAge(Number(v))}
             >
@@ -363,6 +409,7 @@ export default function PersonalInfoScreen() {
 
               {draftHeightUnit === "cm" ? (
                 <Picker
+                  key={`height-cm-${draftHeightCm}`}
                   selectedValue={draftHeightCm}
                   onValueChange={(v: string | number) =>
                     setDraftHeightCm(Number(v))
@@ -376,6 +423,7 @@ export default function PersonalInfoScreen() {
                 <View style={styles.dualPickerRow}>
                   <View style={styles.dualPickerCol}>
                     <Picker
+                      key={`height-ft-${draftHeightFeet}`}
                       selectedValue={draftHeightFeet}
                       onValueChange={(v: string | number) =>
                         setDraftHeightFeet(Number(v))
@@ -388,6 +436,7 @@ export default function PersonalInfoScreen() {
                   </View>
                   <View style={styles.dualPickerCol}>
                     <Picker
+                      key={`height-in-${draftHeightInches}`}
                       selectedValue={draftHeightInches}
                       onValueChange={(v: string | number) =>
                         setDraftHeightInches(Number(v))
@@ -413,9 +462,16 @@ export default function PersonalInfoScreen() {
                   ]}
                   onPress={() => {
                     if (draftWeightUnit === "lb") {
-                      setDraftWeightValue(
-                        Number(toKg(draftWeightValue).toFixed(1)),
-                      );
+                      const asKg = toKg(draftWeightValue);
+                      let kgInt = Math.floor(asKg);
+                      let grams =
+                        Math.round(((asKg - kgInt) * 1000) / 100) * 100;
+                      if (grams === 1000) {
+                        kgInt += 1;
+                        grams = 0;
+                      }
+                      setDraftWeightKg(kgInt);
+                      setDraftWeightGrams(grams);
                     }
                     setDraftWeightUnit("kg");
                   }}
@@ -436,7 +492,8 @@ export default function PersonalInfoScreen() {
                   ]}
                   onPress={() => {
                     if (draftWeightUnit === "kg") {
-                      setDraftWeightValue(Math.round(toLb(draftWeightValue)));
+                      const asKg = draftWeightKg + draftWeightGrams / 1000;
+                      setDraftWeightValue(Math.round(toLb(asKg)));
                     }
                     setDraftWeightUnit("lb");
                   }}
@@ -453,22 +510,37 @@ export default function PersonalInfoScreen() {
               </View>
 
               {draftWeightUnit === "kg" ? (
-                <Picker
-                  selectedValue={Number(draftWeightValue.toFixed(1))}
-                  onValueChange={(v: string | number) =>
-                    setDraftWeightValue(Number(v))
-                  }
-                >
-                  {kgWeights.map((v) => (
-                    <Picker.Item
-                      key={v}
-                      label={`${v.toFixed(1)} kg`}
-                      value={v}
-                    />
-                  ))}
-                </Picker>
+                <View style={styles.dualPickerRow}>
+                  <View style={styles.dualPickerCol}>
+                    <Picker
+                      key={`${activeField}-kgint-${draftWeightKg}`}
+                      selectedValue={draftWeightKg}
+                      onValueChange={(v: string | number) =>
+                        setDraftWeightKg(Number(v))
+                      }
+                    >
+                      {kgInts.map((v) => (
+                        <Picker.Item key={v} label={`${v} kg`} value={v} />
+                      ))}
+                    </Picker>
+                  </View>
+                  <View style={styles.dualPickerCol}>
+                    <Picker
+                      key={`${activeField}-grams-${draftWeightGrams}`}
+                      selectedValue={draftWeightGrams}
+                      onValueChange={(v: string | number) =>
+                        setDraftWeightGrams(Number(v))
+                      }
+                    >
+                      {gramValues.map((v) => (
+                        <Picker.Item key={v} label={`${v} g`} value={v} />
+                      ))}
+                    </Picker>
+                  </View>
+                </View>
               ) : (
                 <Picker
+                  key={`${activeField}-lb-${Math.round(draftWeightValue)}`}
                   selectedValue={Math.round(draftWeightValue)}
                   onValueChange={(v: string | number) =>
                     setDraftWeightValue(Number(v))

@@ -3,7 +3,10 @@ import { useRouter } from "expo-router";
 import { ScrollView, StyleSheet, Text, View, Pressable } from "react-native";
 import { COLORS } from "../../src/lib/theme";
 import { ScreenChrome, PrimaryButton, RadioCircle } from "../../src/lib/ui";
-import { setPendingMainGoal } from "../../src/lib/onboarding-state";
+import {
+  getPendingMainGoal,
+  setPendingMainGoal,
+} from "../../src/lib/onboarding-state";
 
 const GOALS = [
   { id: "lose", label: "Lose weight", sub: "Sustainable fat loss", glyph: "↓" },
@@ -36,7 +39,10 @@ const GOALS = [
 
 export default function GoalsScreen() {
   const router = useRouter();
-  const [selected, setSelected] = useState("gain");
+  const pendingGoal = getPendingMainGoal();
+  const initialSelectedGoal =
+    GOALS.find((g) => g.label === pendingGoal)?.id ?? "lose";
+  const [selected, setSelected] = useState(initialSelectedGoal);
 
   function handleContinue() {
     const selectedGoal = GOALS.find((g) => g.id === selected)?.label;

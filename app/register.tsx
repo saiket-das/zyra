@@ -1,18 +1,25 @@
 import { useState } from "react";
 import {
   Alert,
-  Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
+  ScrollView,
+  Pressable,
 } from "react-native";
 import { Link, useRouter } from "expo-router";
 import { supabase } from "../src/lib/supabase";
+import { COLORS } from "../src/lib/theme";
+import { ScreenChrome, PrimaryButton, GhostButton } from "../src/lib/ui";
 import {
-  clearPendingMainGoal,
+  clearAllPendingData,
   getPendingMainGoal,
+  getPendingProfileInput,
+  getPendingDietInput,
+  getPendingMacroPlan,
 } from "../src/lib/onboarding-state";
+import { saveOnboardingData } from "../src/lib/backend";
 
 export default function RegisterScreen() {
   const [email, setEmail] = useState("");
@@ -21,36 +28,32 @@ export default function RegisterScreen() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  const savePendingGoalIfAny = async (
-    userId?: string,
-    metadataGoal?: string,
-  ) => {
+  const saveOnboardingIfAny = async (userId?: string) => {
     if (!userId) return;
 
-    const pendingGoal = getPendingMainGoal() ?? metadataGoal;
-    if (!pendingGoal) return;
+    const goal = getPendingMainGoal();
+    const profile = getPendingProfileInput();
+    const diet = getPendingDietInput();
+    const macroPlan = getPendingMacroPlan() ?? undefined;
 
-    const { error } = await supabase
-      .from("users")
-      .update({ goal: pendingGoal })
-      .eq("id", userId)
-      .is("goal", null);
+    if (!goal || !profile || !diet) return;
 
-    if (!error) {
-      clearPendingMainGoal();
+    try {
+      await saveOnboardingData(userId, goal, profile, diet, macroPlan);
+      clearAllPendingData();
+    } catch (error) {
+      console.error("Failed to save onboarding data:", error);
     }
   };
 
   async function signUpWithEmail() {
     setLoading(true);
-    const pendingGoal = getPendingMainGoal();
     const { error, data } = await supabase.auth.signUp({
       email: email,
       password: password,
       options: {
         data: {
           full_name: fullName,
-          goal: pendingGoal,
         },
       },
     });
@@ -59,10 +62,7 @@ export default function RegisterScreen() {
       Alert.alert("Sign Up Failed", error.message);
     } else {
       if (data.session) {
-        await savePendingGoalIfAny(
-          data.session.user.id,
-          data.session.user.user_metadata?.goal,
-        );
+        await saveOnboardingIfAny(data.session.user.id);
         router.replace("/(tabs)/dashboard");
       } else {
         Alert.alert(
@@ -76,45 +76,55 @@ export default function RegisterScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Join Zyra</Text>
-
-      <View style={styles.form}>
-        <TextInput
-          style={styles.input}
-          placeholder="Full Name"
-          placeholderTextColor="#a9b4c7"
-          value={fullName}
-          onChangeText={setFullName}
-          autoCapitalize="words"
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Email address"
-          placeholderTextColor="#a9b4c7"
-          value={email}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-          keyboardType="email-address"
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Password"
-          placeholderTextColor="#a9b4c7"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-        />
-
-        <Pressable
-          style={[styles.primaryButton, loading && styles.buttonDisabled]}
-          onPress={signUpWithEmail}
-          disabled={loading}
-        >
-          <Text style={styles.primaryButtonText}>
-            {loading ? "Creating account..." : "Sign up"}
+    <ScreenChrome onBack={() => router.back()}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ flexGrow: 1 }}
+      >
+        <View style={styles.header}>
+          <Text style={styles.title}>Join{"\n"}Zyra.</Text>
+          <Text style={styles.subtitle}>
+            Create an account and start your nutrition journey.
           </Text>
-        </Pressable>
+        </View>
+
+        <View style={styles.form}>
+          <TextInput
+            style={styles.input}
+            placeholder="Full Name"
+            placeholderTextColor={COLORS.inkDim}
+            value={fullName}
+            onChangeText={setFullName}
+            autoCapitalize="words"
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="Email address"
+            placeholderTextColor={COLORS.inkDim}
+            value={email}
+            onChangeText={setEmail}
+            autoCapitalize="none"
+            keyboardType="email-address"
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="Password"
+            placeholderTextColor={COLORS.inkDim}
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+          />
+
+          <PrimaryButton
+            onPress={signUpWithEmail}
+            disabled={loading}
+            style={styles.button}
+          >
+            {loading ? "Creating account..." : "Sign up"}
+          </PrimaryButton>
+        </View>
+
+        <View style={{ flex: 1, minHeight: 24 }} />
 
         <View style={styles.footer}>
           <Text style={styles.footerText}>Already have an account?</Text>
@@ -124,64 +134,62 @@ export default function RegisterScreen() {
             </Pressable>
           </Link>
         </View>
-      </View>
-    </View>
+      </ScrollView>
+    </ScreenChrome>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#08111f",
-    padding: 24,
-    justifyContent: "center",
+  header: {
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 32,
   },
   title: {
-    color: "#f5f7fb",
     fontSize: 32,
-    fontWeight: "800",
-    marginBottom: 32,
+    fontWeight: "600",
+    letterSpacing: -1.2,
+    lineHeight: 36,
+    color: COLORS.ink,
+  },
+  subtitle: {
+    marginTop: 8,
+    fontSize: 15,
+    color: COLORS.inkDim,
+    lineHeight: 20,
   },
   form: {
-    gap: 16,
+    paddingHorizontal: 20,
+    gap: 12,
   },
   input: {
-    backgroundColor: "#101b2f",
-    color: "#f5f7fb",
+    backgroundColor: "#fff",
+    color: COLORS.ink,
     paddingHorizontal: 16,
     paddingVertical: 14,
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#1b2944",
+    borderColor: COLORS.line,
     fontSize: 16,
+    fontWeight: "500",
   },
-  primaryButton: {
-    backgroundColor: "#7ee7c8",
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: "center",
-    marginTop: 8,
-  },
-  buttonDisabled: {
-    opacity: 0.7,
-  },
-  primaryButtonText: {
-    color: "#08111f",
-    fontWeight: "800",
-    fontSize: 16,
+  button: {
+    marginTop: 4,
   },
   footer: {
+    paddingHorizontal: 20,
+    paddingBottom: 36,
+    paddingTop: 12,
     flexDirection: "row",
     justifyContent: "center",
     gap: 8,
-    marginTop: 16,
   },
   footerText: {
-    color: "#a9b4c7",
+    color: COLORS.inkDim,
     fontSize: 14,
   },
   linkText: {
-    color: "#7ee7c8",
+    color: COLORS.green,
     fontSize: 14,
     fontWeight: "600",
   },
